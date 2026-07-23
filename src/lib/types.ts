@@ -54,6 +54,18 @@ export class YoutubeApiError extends Error {
   }
 }
 
+export type SentimentErrorCode = "rateLimited" | "invalidKey" | "unknown";
+
+export class SentimentApiError extends Error {
+  code: SentimentErrorCode;
+
+  constructor(code: SentimentErrorCode, message: string) {
+    super(message);
+    this.name = "SentimentApiError";
+    this.code = code;
+  }
+}
+
 export type AnalyzeSseEvent =
   | { event: "meta"; data: { video: VideoMeta } }
   | {

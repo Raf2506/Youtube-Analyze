@@ -3,7 +3,7 @@ import { z } from "zod";
 import { extractVideoId } from "@/lib/youtube-url";
 import { fetchComments, getVideoMeta } from "@/lib/youtube-client";
 import { classifyComments } from "@/lib/sentiment";
-import { AnalysisSummary, ScoredComment, YoutubeApiError } from "@/lib/types";
+import { AnalysisSummary, ScoredComment, SentimentApiError, YoutubeApiError } from "@/lib/types";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
 import { cacheKey, getCached, setCached } from "@/lib/cache";
 
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         setCached(key, { video, comments: scored, summary });
         send("done", { summary });
       } catch (err) {
-        if (err instanceof YoutubeApiError) {
+        if (err instanceof YoutubeApiError || err instanceof SentimentApiError) {
           send("error", { code: err.code, message: err.message });
         } else {
           console.error(err);

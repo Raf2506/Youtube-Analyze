@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import pLimit from "p-limit";
 import { z } from "zod";
-import { RawComment, ScoredComment, Sentiment } from "@/lib/types";
+import { RawComment, ScoredComment, Sentiment, SentimentApiError } from "@/lib/types";
 
 const MODEL = "gemini-3.5-flash-lite";
 export const BATCH_SIZE = 40;
@@ -98,6 +98,22 @@ function errorStatus(err: unknown): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
+function toSentimentApiError(err: unknown): SentimentApiError {
+  const status = errorStatus(err);
+  const message = (err as { message?: string } | undefined)?.message ?? "Sentiment classification failed.";
+
+  if (status === 429) {
+    return new SentimentApiError(
+      "rateLimited",
+      "The AI classifier hit its rate limit or quota. Try again shortly, or with fewer comments.",
+    );
+  }
+  if (status === 401 || status === 403) {
+    return new SentimentApiError("invalidKey", "The Gemini API key is invalid or unauthorized.");
+  }
+  return new SentimentApiError("unknown", message);
+}
+
 async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -105,11 +121,13 @@ async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (err) {
       lastErr = err;
-      if (!isRetryableStatus(errorStatus(err)) || attempt === MAX_RETRIES - 1) throw err;
+      if (!isRetryableStatus(errorStatus(err)) || attempt === MAX_RETRIES - 1) {
+        throw toSentimentApiError(err);
+      }
       await new Promise((r) => setTimeout(r, 2 ** attempt * 500));
     }
   }
-  throw lastErr;
+  throw toSentimentApiError(lastErr);
 }
 
 async function classifyBatch(
