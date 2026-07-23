@@ -147,13 +147,12 @@ export async function classifyComments(
   await Promise.all(
     batches.map((batch) =>
       limit(async () => {
-        let resultMap = await classifyBatch(client, batch);
-        let missing = batch.filter((item) => !resultMap.has(item.localId));
+        const resultMap = await classifyBatch(client, batch);
+        const missing = batch.filter((item) => !resultMap.has(item.localId));
 
         if (missing.length > 0) {
           const retryMap = await classifyBatch(client, missing);
           for (const [id, value] of retryMap) resultMap.set(id, value);
-          missing = batch.filter((item) => !resultMap.has(item.localId));
         }
 
         const batchScored: ScoredComment[] = batch.map((item) => {
