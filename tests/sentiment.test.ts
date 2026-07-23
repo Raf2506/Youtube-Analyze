@@ -19,7 +19,7 @@ function makeComment(id: string, text: string): RawComment {
 }
 
 function textResponse(json: unknown) {
-  return { content: [{ type: "text", text: JSON.stringify(json) }] };
+  return { text: JSON.stringify(json) };
 }
 
 describe("extractJsonArrayText", () => {
@@ -81,7 +81,7 @@ describe("classifyComments", () => {
         textResponse([{ id: 2, sentiment: "negative", confidence: 0.7 }]),
       );
 
-    const fakeClient = { messages: { create } } as never;
+    const fakeClient = { models: { generateContent: create } } as never;
 
     const scored = await classifyComments(comments, undefined, fakeClient);
 
@@ -99,7 +99,7 @@ describe("classifyComments", () => {
       .mockResolvedValueOnce(textResponse([]))
       .mockResolvedValueOnce(textResponse([]));
 
-    const fakeClient = { messages: { create } } as never;
+    const fakeClient = { models: { generateContent: create } } as never;
 
     const scored = await classifyComments(comments, undefined, fakeClient);
 
@@ -115,7 +115,7 @@ describe("classifyComments", () => {
       .mockResolvedValueOnce(
         textResponse([{ id: 1, sentiment: "positive", confidence: 1 }]),
       );
-    const fakeClient = { messages: { create } } as never;
+    const fakeClient = { models: { generateContent: create } } as never;
 
     const onBatch = vi.fn();
     await classifyComments(comments, onBatch, fakeClient);

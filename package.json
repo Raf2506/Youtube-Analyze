@@ -13,7 +13,7 @@
     "accuracy": "tsx scripts/accuracy.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.114.0",
+    "@google/genai": "^2.13.0",
     "@tanstack/react-virtual": "^3.14.8",
     "next": "16.2.11",
     "p-limit": "^7.3.1",

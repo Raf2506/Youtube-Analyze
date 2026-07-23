@@ -6,14 +6,14 @@ by an LLM rather than a keyword list.
 
 ```
 paste URL  →  extract video ID  →  fetch comments (YouTube Data API v3)
-           →  batch  →  classify (Claude Haiku)  →  aggregate  →  stream to UI
+           →  batch  →  classify (Gemini Flash-Lite)  →  aggregate  →  stream to UI
 ```
 
 ## Setup
 
 1. Get a [YouTube Data API v3 key](https://console.cloud.google.com/) (enable
    "YouTube Data API v3", create a restricted API key — free, no card needed).
-2. Get an [Anthropic API key](https://platform.claude.com/).
+2. Get a [Gemini API key](https://aistudio.google.com/apikey) (Google AI Studio).
 3. Copy `.env.local.example` to `.env.local` and fill in both keys.
 4. `npm install`
 5. `npm run dev` → http://localhost:3000
@@ -37,7 +37,7 @@ npm run accuracy   # run the 50-comment labelled fixture through the classifier,
 - `src/lib/youtube-client.ts` — YouTube Data API client: video metadata,
   paginated top-level comment fetch, typed errors for disabled comments,
   missing videos, and quota exhaustion.
-- `src/lib/sentiment.ts` — batches comments (40/request), sends them to Claude
+- `src/lib/sentiment.ts` — batches comments (40/request), sends them to Gemini
   as a numbered list, and maps results back **by id**, never by array order
   or count. Missing ids get retried once; anything still missing is marked
   `neutral` with `confidence: 0` rather than dropped. Concurrency capped at 4
@@ -59,7 +59,8 @@ npm run accuracy   # run the 50-comment labelled fixture through the classifier,
 - **Why an LLM, not a rules engine.** Comments are multilingual (Malay,
   English, Mandarin, Tamil, heavy code-switching), sarcastic, and emoji-heavy.
   Keyword/VADER-style scoring handles none of that well, and cost at this
-  scale is negligible (~$0.075 per 500-comment analysis with Claude Haiku).
+  scale is negligible (well under $0.05 per 500-comment analysis with Gemini
+  Flash-Lite).
 - **Palette.** Amber (positive) / indigo (negative) / zinc (neutral) instead
   of the default red/green, since red-green is the most common colorblindness
   axis. Every sentiment is also labelled with text, not color alone.

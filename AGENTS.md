@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 Paste a YouTube URL, get every comment labelled positive/negative/neutral, plus a summary.
 
 ## Rules
-- API keys (`YOUTUBE_API_KEY`, `ANTHROPIC_API_KEY`) are read only in `src/app/api/**` and `src/lib/**`. Never in components, never `NEXT_PUBLIC_`.
+- API keys (`YOUTUBE_API_KEY`, `GEMINI_API_KEY`) are read only in `src/app/api/**` and `src/lib/**`. Never in components, never `NEXT_PUBLIC_`.
 - All shared types live in `src/lib/types.ts`. Don't redefine them locally.
 - No `any`. Use `unknown` and narrow.
 - Every external API call: try/catch, typed error, backoff on 429/5xx.

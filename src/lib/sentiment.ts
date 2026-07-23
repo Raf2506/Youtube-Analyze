@@ -1,9 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import pLimit from "p-limit";
 import { z } from "zod";
 import { RawComment, ScoredComment, Sentiment } from "@/lib/types";
 
-const MODEL = "claude-haiku-4-5-20251001";
+const MODEL = "gemini-3.5-flash-lite";
 export const BATCH_SIZE = 40;
 const CONCURRENCY = 4;
 const TRUNCATE_LEN = 400;
@@ -90,6 +90,14 @@ function isRetryableStatus(status: unknown): boolean {
   return typeof status === "number" && (status === 429 || status >= 500);
 }
 
+function errorStatus(err: unknown): number | undefined {
+  const status = (err as { status?: number } | undefined)?.status;
+  if (typeof status === "number") return status;
+  const message = (err as { message?: string } | undefined)?.message ?? "";
+  const match = message.match(/\b(429|500|502|503|504)\b/);
+  return match ? Number(match[1]) : undefined;
+}
+
 async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -97,8 +105,7 @@ async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (err) {
       lastErr = err;
-      const status = (err as { status?: number } | undefined)?.status;
-      if (!isRetryableStatus(status) || attempt === MAX_RETRIES - 1) throw err;
+      if (!isRetryableStatus(errorStatus(err)) || attempt === MAX_RETRIES - 1) throw err;
       await new Promise((r) => setTimeout(r, 2 ** attempt * 500));
     }
   }
@@ -106,20 +113,22 @@ async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function classifyBatch(
-  client: Anthropic,
+  client: GoogleGenAI,
   items: BatchItem[],
 ): Promise<Map<number, { sentiment: Sentiment; confidence: number }>> {
   const response = await withBackoff(() =>
-    client.messages.create({
+    client.models.generateContent({
       model: MODEL,
-      max_tokens: Math.max(1000, items.length * 50),
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserPrompt(items) }],
+      contents: buildUserPrompt(items),
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        maxOutputTokens: Math.max(1000, items.length * 50),
+        responseMimeType: "application/json",
+      },
     }),
   );
 
-  const textBlock = response.content.find((block) => block.type === "text");
-  const raw = textBlock && "text" in textBlock ? textBlock.text : "";
+  const raw = response.text ?? "";
   const validIds = new Set(items.map((i) => i.localId));
 
   return parseModelResponse(raw, validIds);
@@ -128,7 +137,7 @@ async function classifyBatch(
 export async function classifyComments(
   comments: RawComment[],
   onBatch?: (scored: ScoredComment[]) => void,
-  client: Anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
+  client: GoogleGenAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }),
 ): Promise<ScoredComment[]> {
   const limit = pLimit(CONCURRENCY);
 
