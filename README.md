@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# YouTube Comment Sentiment Analyzer
 
-## Getting Started
+Paste a YouTube video URL and get every comment labelled **positive / negative
+/ neutral**, plus a summary breakdown — multilingual, sarcasm-aware, powered
+by an LLM rather than a keyword list.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+paste URL  →  extract video ID  →  fetch comments (YouTube Data API v3)
+           →  batch  →  classify (Claude Haiku)  →  aggregate  →  stream to UI
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Get a [YouTube Data API v3 key](https://console.cloud.google.com/) (enable
+   "YouTube Data API v3", create a restricted API key — free, no card needed).
+2. Get an [Anthropic API key](https://platform.claude.com/).
+3. Copy `.env.local.example` to `.env.local` and fill in both keys.
+4. `npm install`
+5. `npm run dev` → http://localhost:3000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Commands
 
-## Learn More
+```bash
+npm run dev        # dev server
+npm run build      # production build
+npm test           # unit tests (vitest)
+npm run probe -- <youtube-url>   # CLI: print video title + first 5 comments
+npm run accuracy   # run the 50-comment labelled fixture through the classifier,
+                    # print accuracy % and a confusion matrix
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `src/lib/types.ts` — shared types, single source of truth.
+- `src/lib/youtube-url.ts` — parses every supported YouTube URL shape (watch,
+  youtu.be, shorts, embed, m.youtube.com, bare 11-char ID) into a video ID.
+- `src/lib/youtube-client.ts` — YouTube Data API client: video metadata,
+  paginated top-level comment fetch, typed errors for disabled comments,
+  missing videos, and quota exhaustion.
+- `src/lib/sentiment.ts` — batches comments (40/request), sends them to Claude
+  as a numbered list, and maps results back **by id**, never by array order
+  or count. Missing ids get retried once; anything still missing is marked
+  `neutral` with `confidence: 0` rather than dropped. Concurrency capped at 4
+  batches in flight (`p-limit`), exponential backoff on 429/5xx.
+- `src/app/api/analyze/route.ts` — `POST { url, maxComments? }`, streams
+  Server-Sent Events (`meta` → `progress` → `batch` → `done` / `error`) so a
+  10-30 second analysis shows live progress instead of hanging. Per-IP rate
+  limited (5 req/min) and results are cached in-memory for an hour, keyed by
+  `videoId:maxComments`.
+- `src/lib/use-analysis.ts` — client hook that parses the SSE stream
+  (`EventSource` doesn't support POST bodies, so this reads the fetch
+  response stream directly).
+- `src/components/` — `UrlForm`, `SummaryPanel` (stacked-bar summary),
+  `CommentList` (virtualized, filterable, sortable, CSV export),
+  `CommentCard`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Design notes
 
-## Deploy on Vercel
+- **Why an LLM, not a rules engine.** Comments are multilingual (Malay,
+  English, Mandarin, Tamil, heavy code-switching), sarcastic, and emoji-heavy.
+  Keyword/VADER-style scoring handles none of that well, and cost at this
+  scale is negligible (~$0.075 per 500-comment analysis with Claude Haiku).
+- **Palette.** Amber (positive) / indigo (negative) / zinc (neutral) instead
+  of the default red/green, since red-green is the most common colorblindness
+  axis. Every sentiment is also labelled with text, not color alone.
+- **Sampling, not censusing.** Large videos are capped at `maxComments`
+  (default and hard ceiling: 500). The UI should be read as "analysed the N
+  most relevant comments," not "analysed every comment."
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Known limits / next steps
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Top-level comments only (no replies) — replies roughly triple volume and
+  skew conversational rather than opinion-bearing.
+- Cache is in-memory and per-process; swap for a persisted store (e.g. a
+  Postgres/Supabase table) before running multiple instances or across
+  redeploys.
+- Vercel Hobby serverless functions cap at 60s — a 500-comment analysis can
+  approach that. Lower `maxComments` for a Hobby-tier deploy, or move to a
+  background job + polling if you need the full 500.
