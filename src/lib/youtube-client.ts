@@ -86,6 +86,7 @@ export async function getVideoMeta(id: string): Promise<VideoMeta> {
 export async function fetchComments(
   id: string,
   maxComments: number,
+  onPage?: (fetched: number) => void,
 ): Promise<RawComment[]> {
   const comments: RawComment[] = [];
   let pageToken: string | undefined;
@@ -115,6 +116,7 @@ export async function fetchComments(
     }
 
     pageToken = body.nextPageToken;
+    onPage?.(Math.min(comments.length, maxComments));
   } while (pageToken && comments.length < maxComments);
 
   return comments.slice(0, maxComments);
