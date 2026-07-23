@@ -5,6 +5,7 @@ import { fetchComments, getVideoMeta } from "@/lib/youtube-client";
 import { classifyComments } from "@/lib/sentiment";
 import { AnalysisSummary, ScoredComment, YoutubeApiError } from "@/lib/types";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
+import { cacheKey, getCached, setCached } from "@/lib/cache";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,17 @@ export async function POST(request: NextRequest) {
       const send = (event: string, data: unknown) =>
         controller.enqueue(encoder.encode(sseEvent(event, data)));
 
+      const key = cacheKey(videoId, maxComments);
+
       try {
+        const cached = getCached(key);
+        if (cached) {
+          send("meta", { video: cached.video });
+          send("batch", { comments: cached.comments });
+          send("done", { summary: cached.summary });
+          return;
+        }
+
         const video = await getVideoMeta(videoId);
         send("meta", { video });
 
@@ -87,7 +98,9 @@ export async function POST(request: NextRequest) {
         });
 
         if (comments.length === 0) {
-          send("done", { summary: summarize([]) });
+          const summary = summarize([]);
+          setCached(key, { video, comments: [], summary });
+          send("done", { summary });
           return;
         }
 
@@ -101,7 +114,9 @@ export async function POST(request: NextRequest) {
           send("batch", { comments: batch });
         });
 
-        send("done", { summary: summarize(scored) });
+        const summary = summarize(scored);
+        setCached(key, { video, comments: scored, summary });
+        send("done", { summary });
       } catch (err) {
         if (err instanceof YoutubeApiError) {
           send("error", { code: err.code, message: err.message });
